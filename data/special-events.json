@@ -1,0 +1,92 @@
+[
+  {
+    "id": "mars-opposition-2027",
+    "name": "Mars at Opposition",
+    "date": "2027-01-15",
+    "type": "opposition",
+    "description": "Mars will be directly opposite the Sun in our sky, rising at sunset and visible all night. At opposition, Mars is closest to Earth and appears larger and brighter than at any other time in its two-year cycle.",
+    "why_special": "The best time to observe Mars for the next two years. Even binoculars will show its reddish disk.",
+    "visibility_notes": "Visible all night, highest in the south around midnight"
+  },
+  {
+    "id": "total-lunar-2026-03",
+    "name": "Total Lunar Eclipse",
+    "date": "2026-03-03",
+    "type": "eclipse_lunar",
+    "description": "The Moon passes through Earth's shadow, turning a deep copper-red as it catches the light of every sunrise and sunset on Earth at once. No equipment needed, just a clear view of the sky.",
+    "why_special": "A total lunar eclipse is one of the most dramatic and accessible sky events, visible to anyone on the night side of Earth.",
+    "visibility_notes": "Visible from Europe, Africa, and the Americas"
+  },
+  {
+    "id": "total-solar-2026-08",
+    "name": "Total Solar Eclipse",
+    "date": "2026-08-12",
+    "type": "eclipse_solar",
+    "description": "The Moon passes directly between Earth and the Sun, briefly turning day into night along a narrow path across Greenland, Iceland, and Spain. Totality lasts up to 2 minutes 18 seconds.",
+    "why_special": "Total solar eclipses are among the rarest and most awe-inspiring experiences in nature. The next one over Spain won't happen for decades.",
+    "visibility_notes": "Total path crosses Greenland, Iceland, and northern Spain. Partial eclipse visible across most of Europe."
+  },
+  {
+    "id": "saturn-opposition-2026",
+    "name": "Saturn at Opposition",
+    "date": "2026-08-27",
+    "type": "opposition",
+    "description": "Saturn reaches its closest point to Earth for the year, rising at sunset and remaining visible all night. The rings are tilted at a favorable angle, making this one of the best opportunities to see them.",
+    "why_special": "Saturn with its rings is arguably the most beautiful sight in the solar system through any telescope. At opposition it shines at its brightest.",
+    "visibility_notes": "Visible all night, rising in the east at dusk"
+  },
+  {
+    "id": "jupiter-opposition-2026",
+    "name": "Jupiter at Opposition",
+    "date": "2026-10-21",
+    "type": "opposition",
+    "description": "Jupiter, the largest planet in the solar system, reaches its closest and brightest point of the year. Its four largest moons are easily visible in binoculars.",
+    "why_special": "Jupiter's cloud bands and the dance of its Galilean moons visible even in small telescopes. It will outshine everything except Venus and the Moon.",
+    "visibility_notes": "Visible all night, dominant in Aries"
+  },
+  {
+    "id": "geminids-2026",
+    "name": "Geminid Meteor Shower Peak",
+    "date": "2026-12-13",
+    "type": "meteor_shower",
+    "description": "The most reliable and spectacular meteor shower of the year, producing up to 150 meteors per hour under ideal conditions. Unlike most showers, the Geminids are produced by an asteroid, 3200 Phaethon.",
+    "why_special": "Bright, colorful meteors visible from nightfall onward, unlike showers that require staying up past midnight.",
+    "visibility_notes": "Visible from both hemispheres, best after midnight"
+  },
+  {
+    "id": "venus-greatest-elongation-2026",
+    "name": "Venus at Greatest Elongation",
+    "date": "2026-06-01",
+    "type": "elongation",
+    "description": "Venus reaches its greatest angular distance from the Sun, appearing as the brilliant evening star high in the western sky after sunset. This is when Venus is most easily found and most dramatic.",
+    "why_special": "At greatest elongation, Venus appears as a half-lit disk through a telescope, exactly like a tiny half moon.",
+    "visibility_notes": "Low in the western sky after sunset"
+  },
+  {
+    "id": "comet-tsuchinshan-return",
+    "name": "Comet C/2023 A3 (Tsuchinshan-ATLAS) in Evening Sky",
+    "date": "2026-09-15",
+    "type": "comet",
+    "description": "This long-period comet, which made a spectacular appearance in 2024, returns to the inner solar system on a different trajectory. Visibility predictions suggest a bright naked-eye object in the evening sky.",
+    "why_special": "Bright comets are rare and unpredictable. When they appear, they can be the most memorable sky event of a decade.",
+    "visibility_notes": "Watch the western sky after sunset, magnitude predictions uncertain"
+  },
+  {
+    "id": "perseids-2026",
+    "name": "Perseid Meteor Shower Peak",
+    "date": "2026-08-12",
+    "type": "meteor_shower",
+    "description": "The most popular meteor shower, peaking under warm summer skies. Debris from Comet Swift-Tuttle produces fast, bright meteors, many with long glowing trails.",
+    "why_special": "The Perseids fall during summer when nights are warm and it is actually pleasant to lie outside and watch the sky.",
+    "visibility_notes": "Best after midnight, looking northeast"
+  },
+  {
+    "id": "mercury-transit-2025",
+    "name": "Mercury at Greatest Elongation",
+    "date": "2025-11-16",
+    "type": "elongation",
+    "description": "Mercury reaches its greatest distance from the Sun in the evening sky, offering a rare chance to spot the innermost planet just after sunset. Mercury is visible for only brief windows each year.",
+    "why_special": "Many people never see Mercury because it is always close to the Sun's glare. This is one of the year's best chances.",
+    "visibility_notes": "Very low in the western sky immediately after sunset"
+  }
+]
