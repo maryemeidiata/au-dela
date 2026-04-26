@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useCallback, useState, WheelEvent } from "react";
+import { useEffect, useRef, useCallback, useState, WheelEvent, MouseEvent } from "react";
 import { raHoursToAltAz, moonPhase } from "@/lib/coordinates";
 import { magnitudeToRadius, starColorFromSpectral } from "@/lib/utils";
 import { PLANET_COLORS, azimuthToCompass, elevationToPlainLanguage } from "@/lib/astronomy-api";
@@ -143,6 +143,10 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
   const [size, setSize] = useState(520);
   const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const dragRef = useRef<{ active: boolean; startX: number; startY: number; panX: number; panY: number }>({
+    active: false, startX: 0, startY: 0, panX: 0, panY: 0,
+  });
   const hoveredObjectsRef = useRef<Array<{
     x: number; y: number; r: number;
     name: string; type: string; detail: string; description: string;
@@ -161,19 +165,21 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
     if (!canvas) return;
     const ctx = canvas.getContext("2d")!;
     const W = canvas.width, H = canvas.height;
-    const cx = W / 2, cy = H / 2, R = W / 2 - 2;
+    const baseCx = W / 2, baseCy = H / 2, R = W / 2 - 2;
+    // Apply pan offset — zenith shifts from canvas center
+    const cx = baseCx + pan.x, cy = baseCy + pan.y;
 
     ctx.clearRect(0, 0, W, H);
     hoveredObjectsRef.current = [];
 
-    // Sky gradient
-    const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+    // Sky gradient — always centered on canvas
+    const bg = ctx.createRadialGradient(baseCx, baseCy, 0, baseCx, baseCy, R);
     bg.addColorStop(0, "#0d0e22");
     bg.addColorStop(0.55, "#080a18");
     bg.addColorStop(1, "#06070f");
     ctx.save();
     ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.arc(baseCx, baseCy, R, 0, Math.PI * 2);
     ctx.fillStyle = bg;
     ctx.fill();
     ctx.clip();
@@ -310,7 +316,7 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
 
     ctx.restore();
 
-    // Border glow
+    // Border + glow — fixed to canvas center
     const border = ctx.createLinearGradient(0, 0, W, H);
     border.addColorStop(0, "rgba(175,169,236,0.6)");
     border.addColorStop(0.5, "rgba(97,89,176,0.4)");
@@ -318,30 +324,30 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
     ctx.strokeStyle = border;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.arc(baseCx, baseCy, R, 0, Math.PI * 2);
     ctx.stroke();
 
-    const outerGlow = ctx.createRadialGradient(cx, cy, R - 5, cx, cy, R + 28);
+    const outerGlow = ctx.createRadialGradient(baseCx, baseCy, R - 5, baseCx, baseCy, R + 28);
     outerGlow.addColorStop(0, "rgba(97,89,176,0.28)");
     outerGlow.addColorStop(1, "rgba(97,89,176,0)");
     ctx.fillStyle = outerGlow;
     ctx.beginPath();
-    ctx.arc(cx, cy, R + 28, 0, Math.PI * 2);
-    ctx.arc(cx, cy, R - 5, 0, Math.PI * 2, true);
+    ctx.arc(baseCx, baseCy, R + 28, 0, Math.PI * 2);
+    ctx.arc(baseCx, baseCy, R - 5, 0, Math.PI * 2, true);
     ctx.fill();
 
-    // Cardinal labels (adapt to zoom)
+    // Cardinal labels — fixed to canvas edge
     ctx.font = "11px Outfit, sans-serif";
     ctx.fillStyle = "rgba(175,169,236,0.5)";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     const cardinals: [string, number, number][] = [
-      ["N", cx, cy - R + 14], ["S", cx, cy + R - 14],
-      ["E", cx + R - 14, cy], ["W", cx - R + 14, cy],
+      ["N", baseCx, baseCy - R + 14], ["S", baseCx, baseCy + R - 14],
+      ["E", baseCx + R - 14, baseCy], ["W", baseCx - R + 14, baseCy],
     ];
     for (const [l, x, y] of cardinals) ctx.fillText(l, x, y);
 
-    // Altitude rings at 30° and 60° (only at zoom > 1)
+    // Altitude rings (zoom > 1, centered on panned zenith)
     if (zoomFactor > 1.2) {
       const minAlt = 90 - 90 / zoomFactor;
       [30, 60].forEach(alt => {
@@ -362,7 +368,7 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
         ctx.restore();
       });
     }
-  }, [lat, lon, planets, moon, issPosition, zoom]);
+  }, [lat, lon, planets, moon, issPosition, zoom, pan]);
 
   useEffect(() => {
     let frame: number;
@@ -374,10 +380,33 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
 
   function handleWheel(e: WheelEvent<HTMLCanvasElement>) {
     e.preventDefault();
-    setZoom(z => Math.max(1, Math.min(4, z - e.deltaY * 0.003)));
+    setZoom(z => {
+      const newZ = Math.max(1, Math.min(4, z - e.deltaY * 0.003));
+      if (newZ <= 1) setPan({ x: 0, y: 0 });
+      return newZ;
+    });
   }
 
-  function onMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
+  function onMouseDown(e: MouseEvent<HTMLCanvasElement>) {
+    if (zoom <= 1) return;
+    dragRef.current = { active: true, startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
+  }
+
+  function onMouseMove(e: MouseEvent<HTMLCanvasElement>) {
+    const d = dragRef.current;
+    if (d.active) {
+      const rect = canvasRef.current!.getBoundingClientRect();
+      const scale = canvasRef.current!.width / rect.width;
+      const dx = (e.clientX - d.startX) * scale;
+      const dy = (e.clientY - d.startY) * scale;
+      const maxPan = (size / 2) * (1 - 1 / zoom) * 1.2;
+      setPan({
+        x: Math.max(-maxPan, Math.min(maxPan, d.panX + dx)),
+        y: Math.max(-maxPan, Math.min(maxPan, d.panY + dy)),
+      });
+      return;
+    }
+
     const rect = canvasRef.current!.getBoundingClientRect();
     const scale = canvasRef.current!.width / rect.width;
     const cx = (e.clientX - rect.left) * scale;
@@ -391,6 +420,8 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
     setTooltip(null);
   }
 
+  function onMouseUp() { dragRef.current.active = false; }
+
   return (
     <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
       <div style={{ position: "relative" }}>
@@ -401,12 +432,14 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
           style={{
             borderRadius: "50%",
             display: "block",
-            cursor: zoom > 1 ? "zoom-out" : "crosshair",
+            cursor: dragRef.current.active ? "grabbing" : zoom > 1 ? "grab" : "crosshair",
             boxShadow: "0 0 60px rgba(97,89,176,0.3), 0 0 120px rgba(97,89,176,0.1)",
           }}
           onWheel={handleWheel}
+          onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}
-          onMouseLeave={() => setTooltip(null)}
+          onMouseUp={onMouseUp}
+          onMouseLeave={() => { setTooltip(null); dragRef.current.active = false; }}
         />
 
         {/* Zoom controls */}
@@ -423,7 +456,7 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
           {[{ label: "+", delta: 0.5 }, { label: "−", delta: -0.5 }].map(({ label, delta }) => (
             <button
               key={label}
-              onClick={() => setZoom(z => Math.max(1, Math.min(4, z + delta)))}
+              onClick={() => { setZoom(z => { const nz = Math.max(1, Math.min(4, z + delta)); if (nz <= 1) setPan({ x: 0, y: 0 }); return nz; }); }}
               style={{
                 width: 30, height: 30,
                 borderRadius: "50%",
@@ -444,7 +477,7 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
           ))}
           {zoom > 1 && (
             <button
-              onClick={() => setZoom(1)}
+              onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}
               style={{
                 width: 30, height: 30,
                 borderRadius: "50%",

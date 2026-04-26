@@ -7,6 +7,7 @@ import { useSkyData } from "@/hooks/useSkyData";
 import ISSBanner from "@/components/ISSBanner";
 import LoadingSequence from "@/components/LoadingSequence";
 import LocationSearch from "@/components/LocationSearch";
+import FeaturedMoment from "@/components/FeaturedMoment";
 import HighlightsSection from "@/components/sections/HighlightsSection";
 import ISSSection from "@/components/sections/ISSSection";
 import PlanetsSection from "@/components/sections/PlanetsSection";
@@ -204,6 +205,16 @@ export default function AuDelaPage() {
 
           {/* Live time */}
           <LiveTime />
+
+          {/* Value hook — right below the map */}
+          <div style={{ marginTop: 40, width: "100%", maxWidth: 680, padding: "0 16px" }}>
+            <FeaturedMoment
+              planets={sky.planets}
+              moon={sky.moon}
+              passes={iss.passes}
+              cityName={cityName}
+            />
+          </div>
         </header>
 
         {/* Content sections */}
