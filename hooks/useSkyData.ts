@@ -69,22 +69,29 @@ export function useSkyData(lat: number | null, lon: number | null): SkyData {
     fetch(`/api/planets?${params}`)
       .then(r => r.json())
       .then(json => {
-        const rows = json?.data?.rows ?? [];
+        // AstronomyAPI v2 returns data.table.rows, each row has entry + cells[0]
+        const rows: Array<{ entry: { id: string; name: string }; cells: Array<{
+          id: string; name: string;
+          distance: { fromEarth: { au: string } };
+          position: { horizontal: { altitude: { degrees: string }; azimuth: { degrees: string } } };
+          extraInfo: { magnitude: number | null; phase?: { string: string; fraction: string } };
+        }> }> = json?.data?.table?.rows ?? [];
         const planets: PlanetData[] = [];
 
         for (const row of rows) {
-          const body = row.body ?? row.positions?.[0];
-          if (!body) continue;
-          const id = body.id?.toLowerCase();
-          if (!id || id === "sun" || id === "pluto") continue;
+          const cell = row.cells?.[0];
+          if (!cell) continue;
+          const id = (row.entry?.id ?? cell.id)?.toLowerCase();
+          if (!id || id === "sun" || id === "pluto" || id === "earth") continue;
+          if (id === "moon") continue; // handled separately below
 
-          const altDeg = parseFloat(body.position?.horizontal?.altitude?.degrees ?? "0");
-          const azDeg = parseFloat(body.position?.horizontal?.azimuth?.degrees ?? "0");
-          const mag = body.extraInfo?.magnitude ?? null;
+          const altDeg = parseFloat(cell.position?.horizontal?.altitude?.degrees ?? "0");
+          const azDeg = parseFloat(cell.position?.horizontal?.azimuth?.degrees ?? "0");
+          const mag = cell.extraInfo?.magnitude ?? null;
 
           planets.push({
             id,
-            name: body.name,
+            name: row.entry?.name ?? cell.name,
             altitude: altDeg,
             azimuth: azDeg,
             altitudeLabel: elevationToPlainLanguage(altDeg),
@@ -96,19 +103,17 @@ export function useSkyData(lat: number | null, lon: number | null): SkyData {
             riseTime: null,
             setTime: null,
             description: PLANET_DESCRIPTIONS[id] ?? "",
-            distanceAU: body.distance?.fromEarth?.au ? parseFloat(body.distance.fromEarth.au) : null,
+            distanceAU: cell.distance?.fromEarth?.au ? parseFloat(cell.distance.fromEarth.au) : null,
           });
         }
 
         // Moon
-        const moonRow = rows.find((r: { body?: { id?: string } }) =>
-          r.body?.id?.toLowerCase() === "moon"
-        );
+        const moonRow = rows.find(r => r.entry?.id?.toLowerCase() === "moon");
         let moon: MoonData | null = null;
         if (moonRow) {
-          const b = moonRow.body;
-          const alt = parseFloat(b.position?.horizontal?.altitude?.degrees ?? "0");
-          const az = parseFloat(b.position?.horizontal?.azimuth?.degrees ?? "0");
+          const cell = moonRow.cells?.[0];
+          const alt = parseFloat(cell?.position?.horizontal?.altitude?.degrees ?? "0");
+          const az = parseFloat(cell?.position?.horizontal?.azimuth?.degrees ?? "0");
           const phaseData = moonPhase(now);
           moon = {
             phase: phaseData.phase,

@@ -6,6 +6,7 @@ import { useISSData } from "@/hooks/useISSData";
 import { useSkyData } from "@/hooks/useSkyData";
 import ISSBanner from "@/components/ISSBanner";
 import LoadingSequence from "@/components/LoadingSequence";
+import LocationSearch from "@/components/LocationSearch";
 import HighlightsSection from "@/components/sections/HighlightsSection";
 import ISSSection from "@/components/sections/ISSSection";
 import PlanetsSection from "@/components/sections/PlanetsSection";
@@ -44,10 +45,16 @@ export default function AuDelaPage() {
   const [introComplete, setIntroComplete] = useState(false);
   const [contentVisible, setContentVisible] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const [manualLocation, setManualLocation] = useState<{ lat: number; lon: number; cityName: string } | null>(null);
 
   const geo = useGeolocation();
-  const iss = useISSData(geo.lat, geo.lon);
-  const sky = useSkyData(geo.lat, geo.lon);
+
+  const lat = manualLocation?.lat ?? geo.lat ?? 48.8566;
+  const lon = manualLocation?.lon ?? geo.lon ?? 2.3522;
+  const cityName = manualLocation?.cityName ?? geo.cityName;
+
+  const iss = useISSData(lat, lon);
+  const sky = useSkyData(lat, lon);
 
   useScrollReveal();
 
@@ -55,10 +62,6 @@ export default function AuDelaPage() {
     setIntroComplete(true);
     setTimeout(() => setContentVisible(true), 100);
   }, []);
-
-  const lat = geo.lat ?? 48.8566;
-  const lon = geo.lon ?? 2.3522;
-  const cityName = geo.cityName;
   const eventCount = countHighlights(sky.planets, iss.passes);
 
   return (
@@ -172,18 +175,23 @@ export default function AuDelaPage() {
           >
             The sky above {cityName}
           </h1>
-          <p
-            style={{
-              fontFamily: "Outfit, sans-serif",
-              fontWeight: 300,
-              fontSize: 15,
-              color: "rgba(175,169,236,0.5)",
-              marginBottom: 48,
-            }}
-          >
-            {lat.toFixed(2)}&deg; {lat >= 0 ? "N" : "S"},{" "}
-            {Math.abs(lon).toFixed(2)}&deg; {lon >= 0 ? "E" : "W"}
-          </p>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginBottom: 48 }}>
+            <p
+              style={{
+                fontFamily: "Outfit, sans-serif",
+                fontWeight: 300,
+                fontSize: 15,
+                color: "rgba(175,169,236,0.5)",
+              }}
+            >
+              {lat.toFixed(2)}&deg; {lat >= 0 ? "N" : "S"},{" "}
+              {Math.abs(lon).toFixed(2)}&deg; {lon >= 0 ? "E" : "W"}
+            </p>
+            <LocationSearch
+              currentCity={cityName}
+              onSelect={loc => setManualLocation(loc)}
+            />
+          </div>
 
           {/* Sky Map */}
           <SkyMap
