@@ -1,21 +1,47 @@
 # Au-delà
 
-A personal night sky tracker. Real-time star maps, ISS passes, visible planets, meteor showers, and upcoming space events for your exact location. Built as a standalone portfolio project.
+A cinematic, real-time night sky companion. Enter your location and discover what's above you tonight — planets, ISS passes, meteor showers, and more — rendered with photorealistic detail.
+
+**Live demo:** [au-dela.vercel.app](https://au-dela.vercel.app)
+
+---
 
 ## What it does
 
-- Cinematic loading sequence that feels like the opening of a film
-- Canvas-rendered star field with 900 stars, Milky Way band, and occasional shooting stars
-- Interactive sky map showing real star positions, constellation lines, planets, the Moon, and the ISS
-- ISS pass times with countdown timers and mini-arc diagrams
-- Planet visibility cards with accurate colors and positions
-- Meteor shower calendar for the next three upcoming showers
-- Upcoming space events (oppositions, eclipses, conjunctions, comets) for the next 90 days
-- Visibility quality score combining moon phase, historical cloud cover, and light pollution
+- **Welcome & location** — Opens with a clean onboarding screen. Grant GPS access or search for any city in the world. No more defaulting to a random location.
+- **Interactive sky map** — A real-time hemispherical map of the sky above you, rendered in canvas. Stars, planets, the Moon, constellation lines, and the ISS when overhead. Scroll or pinch to zoom; objects scale up realistically as you zoom in.
+- **Photorealistic planets** — Every planet is hand-rendered in canvas with authentic detail:
+  - Jupiter's atmospheric bands (13 distinct layers) + Great Red Spot
+  - Saturn's multi-layer ring system (C, B, Cassini Division, A rings) drawn behind and in front of the disc, with a ring shadow cast on the planet body
+  - Mars with polar ice caps and dark maria
+  - Venus with bright cloud layers and an atmospheric glow proportional to its brightness
+  - Neptune's Great Dark Spot, Mercury's heavily darkened limb, and smooth cyan Uranus
+- **Planet detail panel** — Click any planet on the sky map to open a full panel with physical facts, a complete exploration history (real missions + what each one found), and key things worth knowing about that world.
+- **Featured Moment** — The single most interesting thing happening in your sky right now, written in plain English. ISS pass in 8 minutes? Saturn above the horizon? New moon tonight? Described with context and a real direction ("look toward the southwest, about a third of the way up the sky").
+- **ISS tracking** — Live position, an overhead banner when it's above you, and pass predictions with countdown timers.
+- **Meteor showers** — Active and upcoming shower calendar with peak dates and expected rates.
+- **Deep sky events** — Oppositions, conjunctions, elongations, and eclipses for the next 90 days.
+- **Cinematic intro** — Stars, nebulae, and the Milky Way fade in across a full-page canvas background before the content appears.
 
-## Setup
+---
 
-### 1. Clone and install
+## Stack
+
+| Layer | Tech |
+|---|---|
+| Framework | Next.js 15 (App Router) |
+| Language | TypeScript |
+| Rendering | HTML Canvas API |
+| Astronomy data | AstronomyAPI + local ephemeris math |
+| ISS data | Open Notify API |
+| Geocoding | Nominatim (OpenStreetMap) |
+| Styling | Inline styles (no UI library) |
+| Fonts | Cormorant Garamond · Outfit |
+| Deploy | Vercel |
+
+---
+
+## Running locally
 
 ```bash
 git clone https://github.com/maryemeidiata/au-dela.git
@@ -23,111 +49,87 @@ cd au-dela
 npm install
 ```
 
-### 2. Environment variables
+Create `.env.local`:
 
-Copy the example file and fill in your API keys:
-
-```bash
-cp .env.local.example .env.local
+```env
+ASTRONOMY_APP_ID=your_app_id
+ASTRONOMY_APP_SECRET=your_app_secret
 ```
 
-Then edit `.env.local`:
-
-```
-ASTRONOMY_APP_ID=your_app_id_here
-ASTRONOMY_APP_SECRET=your_app_secret_here
-NASA_API_KEY=your_nasa_key_here
-```
-
-**AstronomyAPI** (required for planet positions and moon phase)
-- Sign up at https://astronomyapi.com
-- Free tier: 100 requests per month
-- Copy your Application ID and Application Secret
-
-**NASA API** (optional, for APOD imagery)
-- Register at https://api.nasa.gov
-- Free, unlimited for reasonable use
-- Without a key, `DEMO_KEY` works but is rate-limited to 30 requests/hour
-
-The app works without credentials but planet data will not load. The star map, ISS tracker, meteor showers, and events all work without any API keys.
-
-### 3. Run locally
+Get free credentials at [astronomyapi.com](https://astronomyapi.com) (100 requests/month on the free tier). The star map, ISS tracker, meteor showers, and events all work without any keys — only planet positions require the API.
 
 ```bash
 npm run dev
 ```
 
-Open http://localhost:3000. Allow browser location access for accurate sky data.
+Open [http://localhost:3000](http://localhost:3000).
 
-## Updating the data files
+---
 
-### Meteor showers
+## Project structure
 
-Edit `data/meteor-showers.json`. Each entry needs:
+```
+app/
+  page.tsx                Main page — welcome gate, layout, data hooks
+  api/
+    planets/              AstronomyAPI proxy (keeps credentials server-side)
+    iss/                  ISS position + pass predictions
 
-```json
-{
-  "id": "unique-id",
-  "name": "Shower Name",
-  "peak": "YYYY-MM-DD",
-  "start": "YYYY-MM-DD",
-  "end": "YYYY-MM-DD",
-  "zhr": 100,
-  "radiantRA": 6.3,
-  "radiantDec": 15.6,
-  "parentBody": "Comet Name",
-  "description": "Plain language description.",
-  "bestViewing": "After midnight, looking northeast"
-}
+components/
+  WelcomeScreen.tsx       Onboarding — GPS button or city search
+  SkyMap.tsx              Interactive hemispherical sky map (canvas)
+  StarField.tsx           Full-page animated star/nebula background (canvas)
+  FeaturedMoment.tsx      "The one thing worth stepping outside for tonight"
+  LoadingSequence.tsx     Cinematic intro overlay
+  ISSBanner.tsx           Overhead ISS alert bar
+  sections/
+    HighlightsSection     Quick-glance summary cards
+    ISSSection            Pass predictions
+    PlanetsSection        Planet cards with photorealistic canvas orbs
+    MeteorSection         Active and upcoming meteor showers
+    EventsSection         Upcoming sky events calendar
+
+lib/
+  planet-renderer.ts      All photorealistic planet drawing functions
+  astronomy-api.ts        Planet data types, direction helpers, PLANET_DETAILS facts
+  coordinates.ts          Alt/Az calculations, sidereal time, moon phase
+  utils.ts                Formatting, star colours, magnitude → radius
+
+hooks/
+  useGeolocation.ts       Browser GPS + reverse geocoding
+  useISSData.ts           ISS live position + pass predictions
+  useSkyData.ts           Planet + moon positions via API
+
+data/
+  bright-stars.json       Curated catalogue of naked-eye stars (RA/Dec/magnitude)
+  meteor-showers.json     Annual shower list with radiant coordinates
+  special-events.json     Manually-curated upcoming astronomical events
 ```
 
-### Special events
-
-Edit `data/special-events.json`. Each entry needs:
-
-```json
-{
-  "id": "unique-id",
-  "name": "Event Name",
-  "date": "YYYY-MM-DD",
-  "type": "opposition | eclipse_lunar | eclipse_solar | meteor_shower | elongation | comet",
-  "description": "What it is in plain language.",
-  "why_special": "Why a curious non-expert should care.",
-  "visibility_notes": "Where to look, who can see it."
-}
-```
-
-Events outside the 90-day window are automatically hidden.
+---
 
 ## Deployment
-
-Deploy to Vercel in one command:
 
 ```bash
 npx vercel
 ```
 
-Add your environment variables in the Vercel dashboard under Project Settings > Environment Variables.
+Add `ASTRONOMY_APP_ID` and `ASTRONOMY_APP_SECRET` in the Vercel project settings. No database, no user accounts — fully stateless.
 
-The app requires no database and has no user accounts. It is entirely stateless.
+---
 
-## Tech stack
+## Design notes
 
-- Next.js 16 (App Router)
-- React 19
-- TypeScript
-- Tailwind CSS v4
-- HTML Canvas API (star field, sky map, planet orbs)
-- Open Notify API (ISS position and pass times, no auth required)
-- AstronomyAPI (planet and moon positions, free tier)
-- NASA APOD API (daily space imagery, free)
-- Browser Geolocation API
-- Nominatim (OpenStreetMap) for reverse geocoding
+The visual language is deliberately restrained: deep navy backgrounds, Cormorant Garamond italic for anything poetic, Outfit for UI text. No UI library — every glow, gradient, and animation is written by hand.
 
-## Architecture notes
+Planet rendering avoids the common mistake of using a plain white radial gradient, which produces a plastic-ball look. All planets use:
+- **Limb darkening** — edges darken realistically toward the disc boundary
+- **Authentic band colours** — sourced from telescope photographs and space agency imagery
+- **Atmospheric halos** — sized and coloured per planet (Venus's is very large and warm; Neptune's is subtle and cool)
+- **Correct geometry for Saturn's rings** — drawn in two passes (back half → planet body → front half) to produce the correct 3D illusion, with a Cassini Division gap and a ring shadow on the planet surface
 
-Star positions are calculated from a hardcoded catalog of 100 bright stars using standard equatorial-to-horizontal coordinate transforms (hour angle, altitude, azimuth). This avoids runtime astronomical dependencies and gives full control over the visual rendering.
+---
 
-The quality score is calculated from: moon phase brightness (40%), historical cloud cover for the nearest known city in that month (40%), and estimated light pollution based on proximity to major urban centres (20%).
+## Licence
 
-No data is stored. Coordinates are passed directly to API proxies and used only for sky calculations.
+MIT

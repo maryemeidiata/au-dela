@@ -1,8 +1,12 @@
 "use client";
-import { useEffect, useRef, useCallback, useState, WheelEvent, MouseEvent } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { raHoursToAltAz, moonPhase } from "@/lib/coordinates";
 import { magnitudeToRadius, starColorFromSpectral } from "@/lib/utils";
-import { PLANET_COLORS, azimuthToCompass, elevationToPlainLanguage } from "@/lib/astronomy-api";
+import {
+  PLANET_COLORS, PLANET_DETAILS,
+  azimuthToCompassFull, elevationToPlainLanguage,
+} from "@/lib/astronomy-api";
+import { drawPlanetFull } from "@/lib/planet-renderer";
 import type { PlanetData, MoonData } from "@/hooks/useSkyData";
 import type { ISSPosition } from "@/hooks/useISSData";
 import starsData from "@/data/bright-stars.json";
@@ -15,15 +19,15 @@ interface Props {
   issPosition: ISSPosition | null;
 }
 
-interface TooltipInfo {
-  x: number;
-  y: number;
-  name: string;
-  type: string;
-  detail: string;
-  description: string;
-  az: number;
-  alt: number;
+interface HoverTarget {
+  x: number; y: number; r: number;
+  name: string; type: string; detail: string;
+  az: number; alt: number;
+  planetId?: string;
+}
+
+interface TooltipInfo extends HoverTarget {
+  screenX: number; screenY: number;
 }
 
 const CONSTELLATION_LINES: [string, string][] = [
@@ -41,39 +45,29 @@ const CONSTELLATION_LINES: [string, string][] = [
   ["mirfak","algol"],
 ];
 
-function altAzToCanvasZoomed(
+function altAzToCanvas(
   alt: number, az: number,
   cx: number, cy: number, R: number, zoom: number
 ): { x: number; y: number; visible: boolean } {
   const minAlt = 90 - 90 / zoom;
-  if (alt < minAlt - 2) return { x: 0, y: 0, visible: false };
-  const r = Math.min(((90 - alt) / (90 / zoom)) * R, R * 1.05);
+  if (alt < minAlt - 3) return { x: 0, y: 0, visible: false };
+  const r = Math.min(((90 - alt) / (90 / zoom)) * R, R * 1.02);
   const azR = az * (Math.PI / 180);
-  return {
-    x: cx + r * Math.sin(azR),
-    y: cy - r * Math.cos(azR),
-    visible: r <= R,
-  };
+  return { x: cx + r * Math.sin(azR), y: cy - r * Math.cos(azR), visible: r <= R };
 }
 
 function drawMoon(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, phase: number) {
   const isWaxing = phase < 0.5;
   const illumination = (1 - Math.cos(phase * 2 * Math.PI)) / 2;
-
   ctx.save();
-  // Dark disc
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fillStyle = "#1a1a28";
   ctx.fill();
-
-  // Lit portion using clip
   ctx.beginPath();
   if (illumination > 0.97) {
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  } else if (illumination < 0.03) {
-    // new moon — just rim
-  } else {
+  } else if (illumination > 0.03) {
     ctx.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2, !isWaxing);
     const frac = Math.abs(1 - 2 * (isWaxing ? illumination : 1 - illumination));
     const bx = cx + (isWaxing ? -1 : 1) * r * frac;
@@ -86,8 +80,6 @@ function drawMoon(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: numb
   grad.addColorStop(1, "#c8c8b8");
   ctx.fillStyle = grad;
   ctx.fill();
-
-  // Glow
   const glow = ctx.createRadialGradient(cx, cy, r * 0.8, cx, cy, r * 2.8);
   glow.addColorStop(0, "rgba(220,218,200,0.18)");
   glow.addColorStop(1, "rgba(220,218,200,0)");
@@ -100,58 +92,238 @@ function drawMoon(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: numb
   ctx.restore();
 }
 
-function drawPlanet(ctx: CanvasRenderingContext2D, px: number, py: number, id: string, name: string, r: number) {
-  const color = PLANET_COLORS[id] ?? "#ffffff";
-  ctx.save();
-  const glow = ctx.createRadialGradient(px, py, 0, px, py, r * 4.5);
-  glow.addColorStop(0, color + "55");
-  glow.addColorStop(1, color + "00");
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(px, py, r * 4.5, 0, Math.PI * 2);
-  ctx.fill();
 
-  const disc = ctx.createRadialGradient(px - r * 0.3, py - r * 0.3, 0, px, py, r);
-  disc.addColorStop(0, "#ffffff");
-  disc.addColorStop(0.3, color);
-  disc.addColorStop(1, color + "cc");
-  ctx.fillStyle = disc;
-  ctx.beginPath();
-  ctx.arc(px, py, r, 0, Math.PI * 2);
-  ctx.fill();
+// ─── Planet Detail Modal ──────────────────────────────────────────────────────
 
-  if (id === "saturn") {
-    ctx.globalAlpha = 0.55;
-    ctx.strokeStyle = "#e8d5a0";
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.ellipse(px, py, r * 2.8, r * 0.65, 0.3, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
+function PlanetModal({
+  planet,
+  onClose,
+}: {
+  planet: PlanetData;
+  onClose: () => void;
+}) {
+  const details = PLANET_DETAILS[planet.id];
+  const color = PLANET_COLORS[planet.id] ?? "#afa9ec";
 
-  ctx.fillStyle = "rgba(204,200,245,0.8)";
-  ctx.font = "10px Outfit, sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText(name, px, py + r + 13);
-  ctx.restore();
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 100,
+        background: "rgba(6,7,15,0.75)",
+        backdropFilter: "blur(6px)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: "20px 16px",
+        animation: "fadeIn 0.25s ease",
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "rgba(10,11,26,0.97)",
+          border: `1px solid ${color}30`,
+          borderRadius: 20,
+          maxWidth: 560,
+          width: "100%",
+          maxHeight: "85vh",
+          overflowY: "auto",
+          padding: "32px 28px",
+          boxShadow: `0 0 60px ${color}18, 0 20px 80px rgba(0,0,0,0.7)`,
+          position: "relative",
+        }}
+      >
+        <button
+          onClick={onClose}
+          style={{
+            position: "absolute", top: 16, right: 16,
+            background: "none", border: "none",
+            color: "rgba(175,169,236,0.35)", fontSize: 20,
+            cursor: "pointer", lineHeight: 1, padding: 4,
+            transition: "color 0.2s",
+          }}
+          onMouseEnter={e => (e.currentTarget.style.color = "rgba(175,169,236,0.75)")}
+          onMouseLeave={e => (e.currentTarget.style.color = "rgba(175,169,236,0.35)")}
+        >
+          ×
+        </button>
+
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 6 }}>
+          {details && (
+            <span style={{ fontSize: 28, color, opacity: 0.7 }}>{details.symbol}</span>
+          )}
+          <h2 style={{
+            fontFamily: "Cormorant Garamond, serif",
+            fontStyle: "italic",
+            fontWeight: 400,
+            fontSize: 32,
+            color: "#e8e6f8",
+            lineHeight: 1,
+          }}>
+            {planet.name}
+          </h2>
+        </div>
+        <p style={{
+          fontSize: 13,
+          color: "rgba(175,169,236,0.45)",
+          fontFamily: "Outfit, sans-serif",
+          marginBottom: 20,
+        }}>
+          {planet.description}
+        </p>
+
+        {/* Current position */}
+        <div style={{
+          background: `${color}12`,
+          border: `1px solid ${color}25`,
+          borderRadius: 12,
+          padding: "12px 16px",
+          marginBottom: 24,
+          display: "flex",
+          gap: 24,
+          flexWrap: "wrap",
+        }}>
+          <Stat label="Direction" value={`Face ${azimuthToCompassFull(planet.azimuth)}`} color={color} />
+          <Stat label="Elevation" value={elevationToPlainLanguage(planet.altitude)} color={color} />
+          {planet.magnitude !== null && (
+            <Stat label="Brightness" value={planet.magnitudeLabel} color={color} />
+          )}
+          {planet.distanceAU !== null && (
+            <Stat label="Distance" value={`${planet.distanceAU.toFixed(2)} AU from Earth`} color={color} />
+          )}
+        </div>
+
+        {details ? (
+          <>
+            {/* Physical facts */}
+            <Section title="At a glance" color={color}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px" }}>
+                <Fact label="Diameter" value={details.diameter} />
+                <Fact label="Distance from Sun" value={details.distanceFromSun} />
+                <Fact label="Day length" value={details.dayLength} />
+                <Fact label="Year length" value={details.yearLength} />
+                <Fact label="Moons" value={details.moons === 0 ? "None" : `${details.moons}`} />
+                <Fact label="Gravity" value={details.gravity} />
+                <Fact label="Temperature" value={details.temperature} />
+                <Fact label="Atmosphere" value={details.atmosphere} />
+              </div>
+            </Section>
+
+            {/* Missions */}
+            <Section title="Exploration history" color={color}>
+              {details.missions.map((m, i) => (
+                <div key={i} style={{ marginBottom: 12 }}>
+                  <div style={{
+                    display: "flex", alignItems: "baseline", gap: 8,
+                    marginBottom: 3,
+                  }}>
+                    <span style={{
+                      fontFamily: "Outfit, sans-serif",
+                      fontWeight: 500,
+                      fontSize: 13,
+                      color: "#ccc8f5",
+                    }}>{m.name}</span>
+                    <span style={{
+                      fontSize: 11,
+                      color: "rgba(175,169,236,0.4)",
+                      fontFamily: "Outfit, sans-serif",
+                    }}>{m.year}</span>
+                  </div>
+                  <p style={{
+                    fontSize: 13,
+                    color: "rgba(232,230,248,0.55)",
+                    lineHeight: 1.55,
+                    margin: 0,
+                    fontFamily: "Outfit, sans-serif",
+                  }}>{m.note}</p>
+                </div>
+              ))}
+            </Section>
+
+            {/* Fun facts */}
+            <Section title="Things worth knowing" color={color}>
+              {details.funFacts.map((f, i) => (
+                <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+                  <span style={{ color, opacity: 0.5, fontSize: 12, marginTop: 2, flexShrink: 0 }}>✦</span>
+                  <p style={{
+                    fontSize: 13,
+                    color: "rgba(232,230,248,0.6)",
+                    lineHeight: 1.6,
+                    margin: 0,
+                    fontFamily: "Outfit, sans-serif",
+                  }}>{f}</p>
+                </div>
+              ))}
+            </Section>
+          </>
+        ) : (
+          <p style={{ fontSize: 13, color: "rgba(175,169,236,0.4)", fontFamily: "Outfit, sans-serif" }}>
+            No detailed data available for this object.
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
+
+function Section({ title, color, children }: { title: string; color: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <div style={{ width: 20, height: 1.5, background: color, opacity: 0.5, borderRadius: 1 }} />
+        <span style={{
+          fontSize: 10,
+          color,
+          opacity: 0.6,
+          letterSpacing: "0.14em",
+          textTransform: "uppercase",
+          fontFamily: "Outfit, sans-serif",
+        }}>{title}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Stat({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10, color, opacity: 0.5, letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "Outfit, sans-serif", marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 13, color: "#ccc8f5", fontFamily: "Outfit, sans-serif" }}>{value}</div>
+    </div>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 10, color: "rgba(175,169,236,0.35)", letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "Outfit, sans-serif", marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 12, color: "rgba(232,230,248,0.65)", fontFamily: "Outfit, sans-serif", lineHeight: 1.4 }}>{value}</div>
+    </div>
+  );
+}
+
+// ─── Main SkyMap ─────────────────────────────────────────────────────────────
 
 export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animFrameRef = useRef<number>(0);
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
+  const [selectedPlanet, setSelectedPlanet] = useState<PlanetData | null>(null);
   const [size, setSize] = useState(520);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const dragRef = useRef<{ active: boolean; startX: number; startY: number; panX: number; panY: number }>({
-    active: false, startX: 0, startY: 0, panX: 0, panY: 0,
-  });
-  const hoveredObjectsRef = useRef<Array<{
-    x: number; y: number; r: number;
-    name: string; type: string; detail: string; description: string;
-    az: number; alt: number;
-  }>>([]);
+
+  const dragRef = useRef({ active: false, startX: 0, startY: 0, panX: 0, panY: 0 });
+  const mouseDownPosRef = useRef({ x: 0, y: 0 });
+  const hoveredRef = useRef<HoverTarget[]>([]);
+  const planetsRef = useRef(planets);
+  planetsRef.current = planets;
 
   useEffect(() => {
     function onResize() { setSize(Math.min(window.innerWidth * 0.9, 580)); }
@@ -166,17 +338,19 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
     const ctx = canvas.getContext("2d")!;
     const W = canvas.width, H = canvas.height;
     const baseCx = W / 2, baseCy = H / 2, R = W / 2 - 2;
-    // Apply pan offset — zenith shifts from canvas center
     const cx = baseCx + pan.x, cy = baseCy + pan.y;
+    const now = new Date();
 
     ctx.clearRect(0, 0, W, H);
-    hoveredObjectsRef.current = [];
+    hoveredRef.current = [];
 
-    // Sky gradient — always centered on canvas
-    const bg = ctx.createRadialGradient(baseCx, baseCy, 0, baseCx, baseCy, R);
-    bg.addColorStop(0, "#0d0e22");
-    bg.addColorStop(0.55, "#080a18");
-    bg.addColorStop(1, "#06070f");
+    // ── Background ──────────────────────────────────────────────────────────
+    // Deep space gradient
+    const bg = ctx.createRadialGradient(baseCx, baseCy * 0.6, 0, baseCx, baseCy, R);
+    bg.addColorStop(0, "#10112a");
+    bg.addColorStop(0.4, "#0a0c1e");
+    bg.addColorStop(0.75, "#080916");
+    bg.addColorStop(1, "#05060e");
     ctx.save();
     ctx.beginPath();
     ctx.arc(baseCx, baseCy, R, 0, Math.PI * 2);
@@ -184,18 +358,36 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
     ctx.fill();
     ctx.clip();
 
-    const now = new Date();
-    const zoomFactor = zoom;
+    // Horizon atmospheric glow (bottom arc)
+    const horizonGrad = ctx.createRadialGradient(baseCx, baseCy + R * 0.7, R * 0.1, baseCx, baseCy + R * 0.3, R);
+    horizonGrad.addColorStop(0, "rgba(60,50,120,0.22)");
+    horizonGrad.addColorStop(0.5, "rgba(40,35,90,0.10)");
+    horizonGrad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = horizonGrad;
+    ctx.fillRect(0, 0, W, H);
 
-    // Constellation lines
+    // Subtle milky way band inside map
+    ctx.save();
+    ctx.translate(baseCx, baseCy);
+    ctx.rotate(-0.4);
+    const mw = ctx.createLinearGradient(-R * 0.2, 0, R * 0.2, 0);
+    mw.addColorStop(0, "rgba(130,140,200,0)");
+    mw.addColorStop(0.5, "rgba(140,150,210,0.07)");
+    mw.addColorStop(1, "rgba(130,140,200,0)");
+    ctx.fillStyle = mw;
+    ctx.filter = "blur(18px)";
+    ctx.fillRect(-R * 0.2, -R, R * 0.4, R * 2);
+    ctx.filter = "none";
+    ctx.restore();
+
+    // ── Constellation lines ─────────────────────────────────────────────────
     const starPos = new Map<string, { x: number; y: number }>();
     for (const star of starsData) {
       const { altitude, azimuth } = raHoursToAltAz(star.ra, star.dec, lat, lon, now);
-      const pos = altAzToCanvasZoomed(altitude, azimuth, cx, cy, R, zoomFactor);
+      const pos = altAzToCanvas(altitude, azimuth, cx, cy, R, zoom);
       if (pos.visible) starPos.set(star.id, { x: pos.x, y: pos.y });
     }
-
-    ctx.globalAlpha = 0.13;
+    ctx.globalAlpha = 0.11;
     ctx.strokeStyle = "#afa9ec";
     ctx.lineWidth = 0.6;
     for (const [a, b] of CONSTELLATION_LINES) {
@@ -208,27 +400,29 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
     }
     ctx.globalAlpha = 1;
 
-    // Stars
+    // ── Stars ────────────────────────────────────────────────────────────────
     for (const star of starsData) {
       const { altitude, azimuth } = raHoursToAltAz(star.ra, star.dec, lat, lon, now);
       if (altitude < -10) continue;
-      const pos = altAzToCanvasZoomed(altitude, azimuth, cx, cy, R, zoomFactor);
+      const pos = altAzToCanvas(altitude, azimuth, cx, cy, R, zoom);
       if (!pos.visible) continue;
 
-      const r = magnitudeToRadius(star.mag, 0.85 + (zoomFactor - 1) * 0.2);
+      // Scale star radius with zoom — objects actually get bigger
+      const baseR = magnitudeToRadius(star.mag);
+      const r = baseR * (0.55 + zoom * 0.45);
       const color = star.color ?? starColorFromSpectral(star.spectral ?? "A");
       const opacityFade = Math.min(1, (altitude + 5) / 15);
 
       ctx.save();
       ctx.globalAlpha = opacityFade;
-      if (r > 1.2) {
-        const g = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, r * 3);
+      if (r > 1.0) {
+        const g = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, r * 3.5);
         g.addColorStop(0, color);
-        g.addColorStop(0.4, color);
+        g.addColorStop(0.35, color);
         g.addColorStop(1, "rgba(0,0,0,0)");
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, r * 3, 0, Math.PI * 2);
+        ctx.arc(pos.x, pos.y, r * 3.5, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.fillStyle = color;
@@ -237,108 +431,110 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
       ctx.fill();
       ctx.restore();
 
-      hoveredObjectsRef.current.push({
-        x: pos.x, y: pos.y, r: Math.max(r * 3, 8),
+      hoveredRef.current.push({
+        x: pos.x, y: pos.y, r: Math.max(r * 3.5, 8),
         name: star.name, type: "Star",
         detail: `Magnitude ${star.mag.toFixed(1)} · ${star.spectral ?? ""} · ${star.constellation ?? ""}`,
-        description: `${star.name} is a ${star.spectral ?? ""} star in ${star.constellation ?? "the sky"}.`,
         az: azimuth, alt: altitude,
       });
     }
 
-    // Moon — show even if slightly below horizon
+    // ── Moon ─────────────────────────────────────────────────────────────────
     if (moon) {
-      const mPos = altAzToCanvasZoomed(moon.altitude, moon.azimuth, cx, cy, R, zoomFactor);
+      const mPos = altAzToCanvas(moon.altitude, moon.azimuth, cx, cy, R, zoom);
       if (mPos.visible || moon.altitude > -5) {
-        const drawPos = mPos.visible ? mPos
-          : altAzToCanvasZoomed(Math.max(moon.altitude, -3), moon.azimuth, cx, cy, R, zoomFactor);
+        const drawPos = mPos.visible
+          ? mPos
+          : altAzToCanvas(Math.max(moon.altitude, -3), moon.azimuth, cx, cy, R, zoom);
         const alpha = moon.altitude < 0 ? Math.max(0.2, 1 + moon.altitude / 5) : 1;
+        const moonR = 14 * (0.6 + zoom * 0.4);
         const phaseData = moonPhase(now);
         ctx.save();
         ctx.globalAlpha = alpha;
-        drawMoon(ctx, drawPos.x, drawPos.y, 14, phaseData.phase);
+        drawMoon(ctx, drawPos.x, drawPos.y, moonR, phaseData.phase);
         ctx.restore();
-        hoveredObjectsRef.current.push({
-          x: drawPos.x, y: drawPos.y, r: 22,
+        hoveredRef.current.push({
+          x: drawPos.x, y: drawPos.y, r: moonR * 2,
           name: "Moon",
           type: moon.phaseName,
-          detail: `${Math.round(moon.illumination * 100)}% illuminated · ${moon.altitudeLabel} · face ${moon.compassDirection}`,
-          description: `The ${moon.phaseName.toLowerCase()} is ${Math.round(moon.illumination * 100)}% lit tonight.`,
+          detail: `${Math.round(moon.illumination * 100)}% illuminated · ${moon.altitudeLabel} · face ${azimuthToCompassFull(moon.azimuth)}`,
           az: moon.azimuth, alt: moon.altitude,
         });
       }
     }
 
-    // Planets
+    // ── Planets ───────────────────────────────────────────────────────────────
     for (const p of planets) {
-      const pos = altAzToCanvasZoomed(p.altitude, p.azimuth, cx, cy, R, zoomFactor);
+      const pos = altAzToCanvas(p.altitude, p.azimuth, cx, cy, R, zoom);
       if (!pos.visible) continue;
-      const r = p.id === "venus" ? 5 : p.id === "jupiter" ? 5.5 : p.id === "saturn" ? 4.5 : 3.5;
-      drawPlanet(ctx, pos.x, pos.y, p.id, p.name, r + (zoomFactor - 1) * 0.5);
-      hoveredObjectsRef.current.push({
-        x: pos.x, y: pos.y, r: (r + 3) * 4,
-        name: p.name, type: "Planet",
-        detail: `${p.magnitudeLabel} · ${p.altitudeLabel} · face ${p.compassDirection}`,
-        description: p.description,
+      const baseR = p.id === "venus" ? 5 : p.id === "jupiter" ? 5.5 : p.id === "saturn" ? 4.5 : 3.5;
+      drawPlanetFull(ctx, pos.x, pos.y, p.id, p.name, baseR, zoom);
+      hoveredRef.current.push({
+        x: pos.x, y: pos.y,
+        r: baseR * (0.55 + zoom * 0.45) * 5,
+        name: p.name,
+        type: "Planet",
+        detail: `${p.magnitudeLabel} · ${p.altitudeLabel} · face ${azimuthToCompassFull(p.azimuth)}`,
         az: p.azimuth, alt: p.altitude,
+        planetId: p.id,
       });
     }
 
-    // ISS
+    // ── ISS ───────────────────────────────────────────────────────────────────
     if (issPosition?.isOverhead) {
-      const iPos = altAzToCanvasZoomed(issPosition.altitude, issPosition.azimuth, cx, cy, R, zoomFactor);
+      const iPos = altAzToCanvas(issPosition.altitude, issPosition.azimuth, cx, cy, R, zoom);
       if (iPos.visible) {
         const pulse = 0.7 + 0.3 * Math.sin((Date.now() / 800) % (Math.PI * 2));
+        const issR = 12 * (0.7 + zoom * 0.3);
         ctx.save();
         ctx.globalAlpha = pulse;
-        const g = ctx.createRadialGradient(iPos.x, iPos.y, 0, iPos.x, iPos.y, 12);
+        const g = ctx.createRadialGradient(iPos.x, iPos.y, 0, iPos.x, iPos.y, issR);
         g.addColorStop(0, "#ffffff");
         g.addColorStop(0.4, "#aabfff");
         g.addColorStop(1, "rgba(170,191,255,0)");
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(iPos.x, iPos.y, 12, 0, Math.PI * 2);
+        ctx.arc(iPos.x, iPos.y, issR, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = "#ffffff";
         ctx.beginPath();
         ctx.arc(iPos.x, iPos.y, 2.5, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
-        hoveredObjectsRef.current.push({
-          x: iPos.x, y: iPos.y, r: 16,
+        hoveredRef.current.push({
+          x: iPos.x, y: iPos.y, r: issR * 1.5,
           name: "ISS", type: "Spacecraft",
-          detail: `${issPosition.altitudeLabel} · heading ${issPosition.compass}`,
-          description: "408 km up, moving at 7.66 km/s. Seven people live there right now.",
+          detail: `${issPosition.altitudeLabel} · heading ${issPosition.compass} — 7 people aboard right now`,
           az: issPosition.azimuth, alt: issPosition.altitude,
         });
       }
     }
 
-    ctx.restore();
+    ctx.restore(); // end clip
 
-    // Border + glow — fixed to canvas center
+    // ── Border & glow ─────────────────────────────────────────────────────────
     const border = ctx.createLinearGradient(0, 0, W, H);
-    border.addColorStop(0, "rgba(175,169,236,0.6)");
-    border.addColorStop(0.5, "rgba(97,89,176,0.4)");
-    border.addColorStop(1, "rgba(175,169,236,0.6)");
+    border.addColorStop(0, "rgba(175,169,236,0.5)");
+    border.addColorStop(0.5, "rgba(97,89,176,0.35)");
+    border.addColorStop(1, "rgba(175,169,236,0.5)");
     ctx.strokeStyle = border;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.arc(baseCx, baseCy, R, 0, Math.PI * 2);
     ctx.stroke();
 
-    const outerGlow = ctx.createRadialGradient(baseCx, baseCy, R - 5, baseCx, baseCy, R + 28);
-    outerGlow.addColorStop(0, "rgba(97,89,176,0.28)");
+    const outerGlow = ctx.createRadialGradient(baseCx, baseCy, R - 5, baseCx, baseCy, R + 30);
+    outerGlow.addColorStop(0, "rgba(97,89,176,0.22)");
     outerGlow.addColorStop(1, "rgba(97,89,176,0)");
     ctx.fillStyle = outerGlow;
     ctx.beginPath();
-    ctx.arc(baseCx, baseCy, R + 28, 0, Math.PI * 2);
+    ctx.arc(baseCx, baseCy, R + 30, 0, Math.PI * 2);
     ctx.arc(baseCx, baseCy, R - 5, 0, Math.PI * 2, true);
     ctx.fill();
 
-    // Cardinal labels — fixed to canvas edge
+    // ── Cardinal labels ───────────────────────────────────────────────────────
     ctx.font = "11px Outfit, sans-serif";
-    ctx.fillStyle = "rgba(175,169,236,0.5)";
+    ctx.fillStyle = "rgba(175,169,236,0.45)";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     const cardinals: [string, number, number][] = [
@@ -347,12 +543,12 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
     ];
     for (const [l, x, y] of cardinals) ctx.fillText(l, x, y);
 
-    // Altitude rings (zoom > 1, centered on panned zenith)
-    if (zoomFactor > 1.2) {
-      const minAlt = 90 - 90 / zoomFactor;
+    // ── Altitude rings (zoom > 1) ─────────────────────────────────────────────
+    if (zoom > 1.2) {
+      const minAlt = 90 - 90 / zoom;
       [30, 60].forEach(alt => {
         if (alt < minAlt) return;
-        const ringR = ((90 - alt) / (90 / zoomFactor)) * R;
+        const ringR = ((90 - alt) / (90 / zoom)) * R;
         ctx.save();
         ctx.beginPath();
         ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
@@ -361,7 +557,7 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
         ctx.setLineDash([4, 8]);
         ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = "rgba(175,169,236,0.3)";
+        ctx.fillStyle = "rgba(175,169,236,0.28)";
         ctx.font = "9px Outfit, sans-serif";
         ctx.textAlign = "left";
         ctx.fillText(`${alt}°`, cx + ringR + 4, cy);
@@ -374,25 +570,27 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
     let frame: number;
     function loop() { draw(); frame = requestAnimationFrame(loop); }
     frame = requestAnimationFrame(loop);
-    animFrameRef.current = frame;
     return () => cancelAnimationFrame(frame);
   }, [draw]);
 
-  function handleWheel(e: WheelEvent<HTMLCanvasElement>) {
+  // ── Interaction handlers ────────────────────────────────────────────────────
+
+  function handleWheel(e: React.WheelEvent<HTMLCanvasElement>) {
     e.preventDefault();
     setZoom(z => {
-      const newZ = Math.max(1, Math.min(4, z - e.deltaY * 0.003));
-      if (newZ <= 1) setPan({ x: 0, y: 0 });
-      return newZ;
+      const nz = Math.max(1, Math.min(3, z - e.deltaY * 0.003));
+      if (nz <= 1) setPan({ x: 0, y: 0 });
+      return nz;
     });
   }
 
-  function onMouseDown(e: MouseEvent<HTMLCanvasElement>) {
+  function onMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
+    mouseDownPosRef.current = { x: e.clientX, y: e.clientY };
     if (zoom <= 1) return;
     dragRef.current = { active: true, startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
   }
 
-  function onMouseMove(e: MouseEvent<HTMLCanvasElement>) {
+  function onMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
     const d = dragRef.current;
     if (d.active) {
       const rect = canvasRef.current!.getBoundingClientRect();
@@ -409,31 +607,50 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
 
     const rect = canvasRef.current!.getBoundingClientRect();
     const scale = canvasRef.current!.width / rect.width;
-    const cx = (e.clientX - rect.left) * scale;
-    const cy = (e.clientY - rect.top) * scale;
-    for (const obj of hoveredObjectsRef.current) {
-      if (Math.hypot(obj.x - cx, obj.y - cy) < obj.r) {
-        setTooltip({ ...obj, x: e.clientX - rect.left, y: e.clientY - rect.top });
+    const mx = (e.clientX - rect.left) * scale;
+    const my = (e.clientY - rect.top) * scale;
+    for (const obj of hoveredRef.current) {
+      if (Math.hypot(obj.x - mx, obj.y - my) < obj.r) {
+        setTooltip({ ...obj, screenX: e.clientX - rect.left, screenY: e.clientY - rect.top });
         return;
       }
     }
     setTooltip(null);
   }
 
-  function onMouseUp() { dragRef.current.active = false; }
+  function onMouseUp(e: React.MouseEvent<HTMLCanvasElement>) {
+    dragRef.current.active = false;
+    const dx = Math.abs(e.clientX - mouseDownPosRef.current.x);
+    const dy = Math.abs(e.clientY - mouseDownPosRef.current.y);
+    if (dx < 5 && dy < 5) {
+      // It's a click — find clicked object
+      const rect = canvasRef.current!.getBoundingClientRect();
+      const scale = canvasRef.current!.width / rect.width;
+      const mx = (e.clientX - rect.left) * scale;
+      const my = (e.clientY - rect.top) * scale;
+      for (const obj of hoveredRef.current) {
+        if (Math.hypot(obj.x - mx, obj.y - my) < obj.r && obj.planetId) {
+          const planet = planetsRef.current.find(p => p.id === obj.planetId);
+          if (planet) { setSelectedPlanet(planet); return; }
+        }
+      }
+    }
+  }
+
+  const canvasSize = size;
 
   return (
     <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
       <div style={{ position: "relative" }}>
         <canvas
           ref={canvasRef}
-          width={size}
-          height={size}
+          width={canvasSize}
+          height={canvasSize}
           style={{
             borderRadius: "50%",
             display: "block",
             cursor: dragRef.current.active ? "grabbing" : zoom > 1 ? "grab" : "crosshair",
-            boxShadow: "0 0 60px rgba(97,89,176,0.3), 0 0 120px rgba(97,89,176,0.1)",
+            boxShadow: "0 0 60px rgba(97,89,176,0.28), 0 0 120px rgba(97,89,176,0.10)",
           }}
           onWheel={handleWheel}
           onMouseDown={onMouseDown}
@@ -443,31 +660,18 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
         />
 
         {/* Zoom controls */}
-        <div
-          style={{
-            position: "absolute",
-            bottom: 16,
-            right: 16,
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-          }}
-        >
-          {[{ label: "+", delta: 0.5 }, { label: "−", delta: -0.5 }].map(({ label, delta }) => (
+        <div style={{ position: "absolute", bottom: 16, right: 16, display: "flex", flexDirection: "column", gap: 6 }}>
+          {([{ label: "+", delta: 0.4 }, { label: "−", delta: -0.4 }] as const).map(({ label, delta }) => (
             <button
               key={label}
-              onClick={() => { setZoom(z => { const nz = Math.max(1, Math.min(4, z + delta)); if (nz <= 1) setPan({ x: 0, y: 0 }); return nz; }); }}
+              onClick={() => setZoom(z => { const nz = Math.max(1, Math.min(3, z + delta)); if (nz <= 1) setPan({ x: 0, y: 0 }); return nz; })}
               style={{
-                width: 30, height: 30,
-                borderRadius: "50%",
+                width: 30, height: 30, borderRadius: "50%",
                 background: "rgba(13,14,31,0.8)",
-                border: "1px solid rgba(175,169,236,0.25)",
-                color: "#afa9ec",
-                fontSize: 16,
-                cursor: "pointer",
+                border: "1px solid rgba(175,169,236,0.22)",
+                color: "#afa9ec", fontSize: 16, cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                lineHeight: 1,
-                transition: "all 0.2s ease",
+                lineHeight: 1, transition: "all 0.2s ease",
               }}
               onMouseEnter={e => (e.currentTarget.style.background = "rgba(97,89,176,0.4)")}
               onMouseLeave={e => (e.currentTarget.style.background = "rgba(13,14,31,0.8)")}
@@ -479,13 +683,10 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
             <button
               onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}
               style={{
-                width: 30, height: 30,
-                borderRadius: "50%",
+                width: 30, height: 30, borderRadius: "50%",
                 background: "rgba(13,14,31,0.8)",
-                border: "1px solid rgba(175,169,236,0.2)",
-                color: "rgba(175,169,236,0.55)",
-                fontSize: 9,
-                cursor: "pointer",
+                border: "1px solid rgba(175,169,236,0.18)",
+                color: "rgba(175,169,236,0.5)", fontSize: 9, cursor: "pointer",
                 transition: "all 0.2s ease",
               }}
             >
@@ -494,67 +695,55 @@ export default function SkyMap({ lat, lon, planets, moon, issPosition }: Props) 
           )}
         </div>
 
-        {/* Zoom level indicator */}
         {zoom > 1 && (
-          <div
-            style={{
-              position: "absolute",
-              top: 16,
-              left: 16,
-              background: "rgba(13,14,31,0.75)",
-              border: "1px solid rgba(175,169,236,0.15)",
-              borderRadius: 12,
-              padding: "3px 10px",
-              fontSize: 11,
-              color: "rgba(175,169,236,0.6)",
-              fontFamily: "Outfit, sans-serif",
-            }}
-          >
+          <div style={{
+            position: "absolute", top: 16, left: 16,
+            background: "rgba(13,14,31,0.75)",
+            border: "1px solid rgba(175,169,236,0.14)",
+            borderRadius: 12, padding: "3px 10px",
+            fontSize: 11, color: "rgba(175,169,236,0.55)",
+            fontFamily: "Outfit, sans-serif",
+          }}>
             {zoom.toFixed(1)}×
           </div>
         )}
 
-        {/* Tooltip */}
-        {tooltip && (
+        {/* Hover tooltip */}
+        {tooltip && !selectedPlanet && (
           <div
             className="tooltip-card glass"
             style={{
-              left: Math.min(tooltip.x + 14, size - 250),
-              top: Math.max(tooltip.y - 70, 8),
+              left: Math.min(tooltip.screenX + 14, canvasSize - 250),
+              top: Math.max(tooltip.screenY - 70, 8),
               padding: "12px 14px",
             }}
           >
             <div style={{ fontFamily: "Cormorant Garamond, serif", fontSize: 17, color: "#afa9ec", fontStyle: "italic" }}>
               {tooltip.name}
             </div>
-            <div style={{ fontSize: 11, color: "#6159b0", marginTop: 2, fontWeight: 400 }}>{tooltip.type}</div>
+            <div style={{ fontSize: 11, color: "#6159b0", marginTop: 2 }}>{tooltip.type}</div>
             <div style={{ fontSize: 12, color: "#ccc8f5", marginTop: 6, lineHeight: 1.5 }}>{tooltip.detail}</div>
-            {tooltip.alt >= -5 && (
-              <div
-                style={{
-                  marginTop: 8,
-                  paddingTop: 8,
-                  borderTop: "1px solid rgba(175,169,236,0.1)",
-                  fontSize: 12,
-                  color: "rgba(175,169,236,0.55)",
-                  fontStyle: "italic",
-                  fontFamily: "Cormorant Garamond, serif",
-                }}
-              >
-                Step outside, face {azimuthToCompass(tooltip.az)}.{" "}
-                {tooltip.alt < 0
-                  ? "Just below the horizon."
-                  : `Look ${elevationToPlainLanguage(tooltip.alt)}.`}
+            {tooltip.planetId && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "rgba(175,169,236,0.4)", fontFamily: "Outfit, sans-serif", letterSpacing: "0.04em" }}>
+                click for details →
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Scroll hint */}
-      <p style={{ fontSize: 11, color: "rgba(175,169,236,0.3)", letterSpacing: "0.06em" }}>
-        scroll to zoom · hover objects for details
+      <p style={{ fontSize: 11, color: "rgba(175,169,236,0.28)", letterSpacing: "0.06em" }}>
+        scroll to zoom · hover objects · click planets for details
       </p>
+
+      {/* Planet detail modal */}
+      {selectedPlanet && (
+        <PlanetModal planet={selectedPlanet} onClose={() => setSelectedPlanet(null)} />
+      )}
+
+      <style>{`
+        @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+      `}</style>
     </div>
   );
 }

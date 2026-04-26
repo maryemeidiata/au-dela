@@ -8,6 +8,7 @@ import ISSBanner from "@/components/ISSBanner";
 import LoadingSequence from "@/components/LoadingSequence";
 import LocationSearch from "@/components/LocationSearch";
 import FeaturedMoment from "@/components/FeaturedMoment";
+import WelcomeScreen from "@/components/WelcomeScreen";
 import HighlightsSection from "@/components/sections/HighlightsSection";
 import ISSSection from "@/components/sections/ISSSection";
 import PlanetsSection from "@/components/sections/PlanetsSection";
@@ -43,6 +44,7 @@ function countHighlights(
 }
 
 export default function AuDelaPage() {
+  const [locationConfirmed, setLocationConfirmed] = useState(false);
   const [introComplete, setIntroComplete] = useState(false);
   const [contentVisible, setContentVisible] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -64,6 +66,20 @@ export default function AuDelaPage() {
     setTimeout(() => setContentVisible(true), 100);
   }, []);
   const eventCount = countHighlights(sky.planets, iss.passes);
+
+  if (!locationConfirmed) {
+    return (
+      <>
+        <StarField />
+        <WelcomeScreen
+          onReady={(lat, lon, city) => {
+            setManualLocation({ lat, lon, cityName: city });
+            setLocationConfirmed(true);
+          }}
+        />
+      </>
+    );
+  }
 
   return (
     <>

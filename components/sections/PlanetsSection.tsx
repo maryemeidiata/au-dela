@@ -2,56 +2,36 @@
 import { useEffect, useRef } from "react";
 import GlassCard from "@/components/ui/GlassCard";
 import type { PlanetData, MoonData } from "@/hooks/useSkyData";
-import { PLANET_COLORS } from "@/lib/astronomy-api";
+import { azimuthToCompassFull } from "@/lib/astronomy-api";
+import { drawPlanetDisc } from "@/lib/planet-renderer";
 
 interface Props { planets: PlanetData[]; moon: MoonData | null; loading: boolean }
 
-function PlanetOrb({ id, size = 48 }: { id: string; size?: number }) {
+// Saturn needs extra canvas space for the rings
+const CANVAS_SIZE: Record<string, number> = { saturn: 130 };
+const PLANET_R: Record<string, number>    = { saturn: 22,  default: 30 };
+
+function PlanetOrb({ id }: { id: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const size   = CANVAS_SIZE[id]  ?? 80;
+  const r      = PLANET_R[id]     ?? PLANET_R.default;
 
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d")!;
-    const color = PLANET_COLORS[id] ?? "#ffffff";
-    const cx = size / 2, cy = size / 2, r = size * 0.38;
-
     ctx.clearRect(0, 0, size, size);
+    drawPlanetDisc(ctx, size / 2, size / 2, r, id);
+  }, [id, size, r]);
 
-    // Outer glow
-    const glow = ctx.createRadialGradient(cx, cy, r * 0.5, cx, cy, r * 2);
-    const base = color;
-    glow.addColorStop(0, base + "60");
-    glow.addColorStop(1, base + "00");
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r * 2, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Body gradient
-    const disc = ctx.createRadialGradient(cx - r * 0.28, cy - r * 0.28, 0, cx, cy, r);
-    disc.addColorStop(0, "#ffffff");
-    disc.addColorStop(0.25, base);
-    disc.addColorStop(1, base + "cc");
-    ctx.fillStyle = disc;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Saturn rings
-    if (id === "saturn") {
-      ctx.save();
-      ctx.globalAlpha = 0.55;
-      ctx.strokeStyle = "#e8d5a0";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, r * 2.2, r * 0.55, 0.3, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    }
-  }, [id, size]);
-
-  return <canvas ref={ref} width={size} height={size} style={{ display: "block" }} />;
+  return (
+    <canvas
+      ref={ref}
+      width={size}
+      height={size}
+      style={{ display: "block", width: size, height: size }}
+    />
+  );
 }
 
 const ORDER = ["mercury", "venus", "mars", "jupiter", "saturn", "uranus", "neptune"];
@@ -95,35 +75,35 @@ export default function PlanetsSection({ planets, moon, loading }: Props) {
           <GlassCard
             key={p.id}
             style={{
-              minWidth: 150,
-              maxWidth: 170,
+              minWidth: 160,
+              maxWidth: 185,
               flexShrink: 0,
-              padding: "16px 18px",
-              opacity: p.visible ? 1 : 0.45,
+              padding: "20px 16px 18px",
+              opacity: p.visible ? 1 : 0.42,
             }}
           >
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-              <PlanetOrb id={p.id} size={52} />
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+              <PlanetOrb id={p.id} />
               <div style={{ textAlign: "center" }}>
-                <div style={{ fontFamily: "Cormorant Garamond, serif", fontSize: 17, color: "#afa9ec", fontWeight: 400 }}>
+                <div style={{ fontFamily: "Cormorant Garamond, serif", fontSize: 18, color: "#afa9ec", fontWeight: 400 }}>
                   {p.name}
                 </div>
                 {p.visible ? (
                   <>
-                    <div style={{ fontSize: 12, color: "rgba(175,169,236,0.6)", marginTop: 4 }}>
+                    <div style={{ fontSize: 12, color: "rgba(175,169,236,0.62)", marginTop: 5, lineHeight: 1.45 }}>
                       {p.altitudeLabel}
                     </div>
-                    <div style={{ fontSize: 11, color: "rgba(175,169,236,0.45)", marginTop: 3 }}>
-                      facing {p.compassDirection}
+                    <div style={{ fontSize: 11, color: "rgba(175,169,236,0.42)", marginTop: 3 }}>
+                      toward the {azimuthToCompassFull(p.azimuth)}
                     </div>
                     {p.magnitude !== null && (
-                      <div style={{ fontSize: 11, color: "rgba(175,169,236,0.4)", marginTop: 3 }}>
+                      <div style={{ fontSize: 11, color: "rgba(175,169,236,0.35)", marginTop: 3 }}>
                         mag {p.magnitude.toFixed(1)}
                       </div>
                     )}
                   </>
                 ) : (
-                  <div style={{ fontSize: 12, color: "rgba(175,169,236,0.35)", marginTop: 4 }}>
+                  <div style={{ fontSize: 12, color: "rgba(175,169,236,0.32)", marginTop: 5 }}>
                     Not visible tonight
                   </div>
                 )}

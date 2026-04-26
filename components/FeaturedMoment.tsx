@@ -3,6 +3,7 @@ import type { PlanetData, MoonData } from "@/hooks/useSkyData";
 import type { ISSPass } from "@/hooks/useISSData";
 import { formatCountdown } from "@/lib/utils";
 import { moonPhase } from "@/lib/coordinates";
+import { azimuthToCompassFull } from "@/lib/astronomy-api";
 
 interface Props {
   planets: PlanetData[];
@@ -35,8 +36,8 @@ function buildMoment(
     return {
       label: "Coming up",
       headline: `The ISS passes over ${cityName} in ${countdown}`,
-      body: `Step outside and face ${soonPass.direction}. The International Space Station will streak across the sky ${soonPass.maxAltitudeLabel} — a bright, steady light moving faster than any plane, carrying seven people right now. No equipment needed. Just look up.`,
-      direction: `Face ${soonPass.direction}`,
+      body: `Step outside and look toward the ${soonPass.direction.toLowerCase()}. The International Space Station will streak across the sky ${soonPass.maxAltitudeLabel} — a bright, steady light moving faster than any plane, carrying seven people right now. No equipment needed.`,
+      direction: `Look toward the ${soonPass.direction.toLowerCase()}`,
       urgency: "soon",
     };
   }
@@ -44,11 +45,12 @@ function buildMoment(
   // Saturn visible — highly photogenic, always a good hook
   const saturn = planets.find(p => p.id === "saturn" && p.visible && p.altitude > 15);
   if (saturn) {
+    const dir = azimuthToCompassFull(saturn.azimuth);
     return {
       label: "Visible tonight",
       headline: `Saturn and its rings are up right now`,
-      body: `Face ${saturn.compassDirection} and look ${saturn.altitudeLabel}. Saturn is one of those things that changes people — the moment you see those rings through even a cheap telescope, the scale of the solar system becomes real. Tonight it sits clear in the ${saturn.compassDirection} sky.`,
-      direction: `Face ${saturn.compassDirection}`,
+      body: `Look toward the ${dir}, ${saturn.altitudeLabel}. Saturn is one of those things that changes people — the moment you see those rings through even a cheap telescope, the scale of the solar system becomes real.`,
+      direction: `Look toward the ${dir}`,
       urgency: "tonight",
     };
   }
@@ -56,11 +58,12 @@ function buildMoment(
   // Jupiter visible — bright and impressive
   const jupiter = planets.find(p => p.id === "jupiter" && p.visible && p.altitude > 10);
   if (jupiter) {
+    const dir = azimuthToCompassFull(jupiter.azimuth);
     return {
       label: "Visible tonight",
-      headline: `Jupiter is the brightest point of light in the ${jupiter.compassDirection} sky`,
-      body: `Look ${jupiter.altitudeLabel} toward the ${jupiter.compassDirection}. That intensely bright, non-twinkling light is Jupiter — a world 1,300 times the volume of Earth. With binoculars you can see up to four of its moons as tiny dots in a line. They move visibly from night to night.`,
-      direction: `Face ${jupiter.compassDirection}`,
+      headline: `Jupiter is the brightest point of light in the ${dir} sky`,
+      body: `Look toward the ${dir}, ${jupiter.altitudeLabel}. That intensely bright, non-twinkling light is Jupiter — a world 1,300 times the volume of Earth. With binoculars you can see up to four of its moons as tiny dots in a line. They move visibly night to night.`,
+      direction: `Look toward the ${dir}`,
       urgency: "tonight",
     };
   }
@@ -68,11 +71,12 @@ function buildMoment(
   // Venus — always dramatic
   const venus = planets.find(p => p.id === "venus" && p.visible);
   if (venus) {
+    const dir = azimuthToCompassFull(venus.azimuth);
     return {
       label: "Visible tonight",
-      headline: `Venus blazes in the ${venus.compassDirection} sky`,
-      body: `Venus is so bright it can cast faint shadows on a dark night. Face ${venus.compassDirection} and look ${venus.altitudeLabel}. It never rises very high because it orbits closer to the Sun than we do — you only ever catch it near the horizon, just after sunset or before sunrise.`,
-      direction: `Face ${venus.compassDirection}`,
+      headline: `Venus blazes in the ${dir} sky`,
+      body: `Venus is so bright it can cast faint shadows on a dark night. Look toward the ${dir}, ${venus.altitudeLabel}. It orbits closer to the Sun than we do, so you only ever catch it near the horizon — just after sunset or before sunrise.`,
+      direction: `Look toward the ${dir}`,
       urgency: "tonight",
     };
   }
@@ -80,11 +84,12 @@ function buildMoment(
   // Mars visible
   const mars = planets.find(p => p.id === "mars" && p.visible && p.altitude > 10);
   if (mars) {
+    const dir = azimuthToCompassFull(mars.azimuth);
     return {
       label: "Visible tonight",
-      headline: `Mars glows red in the ${mars.compassDirection} sky`,
-      body: `That distinct reddish, steady point toward the ${mars.compassDirection} is Mars. The color comes from iron oxide across its entire surface — rust on a planetary scale. Look ${mars.altitudeLabel}. It moves noticeably against the stars over weeks.`,
-      direction: `Face ${mars.compassDirection}`,
+      headline: `Mars glows red in the ${dir} sky`,
+      body: `Look toward the ${dir}, ${mars.altitudeLabel}. That reddish, steady point is Mars — the color comes from iron oxide across its entire surface, rust on a planetary scale. It moves noticeably against the stars over weeks.`,
+      direction: `Look toward the ${dir}`,
       urgency: "tonight",
     };
   }
@@ -95,8 +100,8 @@ function buildMoment(
     return {
       label: "Perfect conditions",
       headline: `The Moon is dark. Tonight is for stargazing.`,
-      body: `A new moon means no moonlight to wash out the sky. From a dark location tonight you can see the Milky Way as a faint band arching overhead, and thousands more stars than usual. This window lasts only a few nights a month.`,
-      direction: `Any direction`,
+      body: `A new moon means no moonlight washing out the sky. From a dark spot tonight you can see the Milky Way as a faint band arching overhead, and thousands more stars than usual. This window lasts only a few nights a month.`,
+      direction: `Any direction will do`,
       urgency: "tonight",
     };
   }
@@ -108,8 +113,8 @@ function buildMoment(
     return {
       label: "Tonight",
       headline: `The ISS flies over ${cityName} in ${countdown}`,
-      body: `The International Space Station orbits Earth every 92 minutes at 408 km up, moving at 7.66 km/s. When it passes overhead it looks like a very bright, steady star moving silently across the sky. Face ${nextPass.direction} and look ${nextPass.maxAltitudeLabel}. Seven people will be on board.`,
-      direction: `Face ${nextPass.direction}`,
+      body: `The International Space Station orbits Earth every 92 minutes at 408 km altitude, moving at 7.66 km/s. It looks like a very bright, steady star moving silently across the sky. Look toward the ${nextPass.direction.toLowerCase()}, ${nextPass.maxAltitudeLabel}. Seven people will be on board.`,
+      direction: `Look toward the ${nextPass.direction.toLowerCase()}`,
       urgency: "tonight",
     };
   }
